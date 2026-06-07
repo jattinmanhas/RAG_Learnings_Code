@@ -1,0 +1,24 @@
+{
+  "name": "1.6-apis",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "dev": "node --loader ts-node/esm src/01-basic-call.ts",
+    "start": "node --loader ts-node/esm src/05-cost-tracking.ts"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "dependencies": {
+    "dotenv": "^17.4.2",
+    "openai": "^6.42.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.9.2",
+    "typescript": "^5.6.2",
+    "ts-node": "^10.9.1"
+  }
+}

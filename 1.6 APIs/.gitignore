@@ -1,0 +1,40 @@
+# Node modules
+node_modules/
+
+# Build output
+dist/
+build/
+
+# TypeScript cache
+.tsbuildinfo
+
+# Environment files
+.env
+.env.*
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDEs and editors
+.vscode/
+.idea/
+
+# Optional npm/yarn lockfiles (uncomment if you want to ignore them)
+# package-lock.json
+# yarn.lock
+
+# ts-node
+.ts-node
+
+# Temporary files
+*.tmp
+*.log
+
+# Mac resource forks
+._*
