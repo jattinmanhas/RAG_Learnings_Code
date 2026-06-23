@@ -1,0 +1,22 @@
+{
+  "name": "3.1-document-preprocessing-nodejs",
+  "version": "1.0.0",
+  "description": "Multi-format document text extraction pipeline for RAG",
+  "main": "src/index.ts",
+  "scripts": {
+    "start": "ts-node src/index.ts"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "mammoth": "^1.8.0",
+    "unpdf": "^1.6.2"
+  },
+  "devDependencies": {
+    "@types/node": "^25.9.3",
+    "ts-node": "^10.9.2",
+    "typescript": "^6.0.3"
+  }
+}

@@ -1,0 +1,3 @@
+Plain text sample.
+This file has no formatting at all. The preprocessing pipeline reads it
+verbatim. Useful for logs, transcripts, and scraped content.

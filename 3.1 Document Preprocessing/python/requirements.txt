@@ -1,0 +1,6 @@
+# PDF text extraction
+pypdf>=4.0.0
+
+# .docx (Microsoft Word) text extraction. The pip package is "python-docx"
+# but you import it in code as `docx` (see main.py).
+python-docx>=1.1.0

@@ -1,0 +1,21 @@
+# Spin up Postgres with the pgvector extension preinstalled.
+#   Start:  docker compose up -d
+#   Connect: docker compose exec postgres psql -U user -d ragdb
+#   Stop:   docker compose down            (add -v to also delete the data)
+services:
+  postgres:
+    # The pgvector image = official Postgres + the vector extension baked in.
+    # pg16 = Postgres 16. Use a tag that matches the Postgres version you want.
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_DB: ragdb
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+    ports:
+      - "5432:5432"
+    volumes:
+      # Persist data on the host so it survives `docker compose down`.
+      - pgdata:/var/lib/postgresql/data
+
+volumes:
+  pgdata:
