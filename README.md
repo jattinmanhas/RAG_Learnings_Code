@@ -316,6 +316,13 @@ Rationale: A hypothetical answer is semantically closer to real answer-containin
 - Retrieve small chunks for precision
 - Expand to surrounding context for generation
 
+### Retrieval Optimization (3.4.3)
+- **Top-K Retrieval** — dense cosine search, tuning K for the recall/precision tradeoff
+- **Metadata Filtering** — narrow candidates by structured fields (source, language, access) before scoring; correctness and security, not just relevance
+- **Hybrid Retrieval** — fuse dense vectors (semantic recall) with BM25 keyword search (exact-token precision) via Reciprocal Rank Fusion or weighted score blending
+- **Retrieval Tuning** — the knobs: topK, dense/sparse mix (alpha), RRF constant, candidate width, score threshold
+- Runnable Go + Node.js examples in `3.4.3 Retrieval Optimization/`
+
 ---
 
 ## 3.5 Retrieval Optimization
