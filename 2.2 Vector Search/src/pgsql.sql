@@ -12,6 +12,11 @@ ON documents
 USING hnsw (embedding vector_cosine_ops)
 WITH (m = 16, ef_construction = 64);
 
+-- Backs JSONB containment (metadata @> '{...}') for filtered / hybrid search.
+CREATE INDEX idx_docs_metadata
+ON documents
+USING gin (metadata);
+
 /*
 vectordb=# \d documents
                              Table "public.documents"

@@ -111,3 +111,39 @@ With 207 rows, the planner will likely switch to the HNSW index on its own. The 
 The index isn't for correctness, it's for scale. With 7 rows, brute force beats HNSW. With 1M rows, HNSW beats brute force by orders of magnitude. The same query, same index, same code — the planner decides which path is cheaper based on row count and cost estimates. That's the whole point of ANN: you trade a tiny bit of recall for massive speed gains at scale.
 
 Run the bulk insert and share what EXPLAIN shows after.
+
+---
+
+## Go version — and more ways to look at vector search
+
+`go/` contains the same pgvector search written in Go (`pgx` + Ollama), plus four extra examples that make vector search less of a black box. Run it with:
+
+```bash
+cd "2.2 Vector Search/go"
+go mod tidy
+docker compose -f ../docker-compose.yml up -d   # Postgres + pgvector
+ollama pull nomic-embed-text:v1.5
+go run .
+```
+
+It creates the schema itself and seeds the corpus only when the table is empty, so it's safe to re-run. The five things it demonstrates:
+
+**1. Semantic search** — the exact TypeScript query in Go: embed the query, `ORDER BY embedding <=> $1` (cosine distance), take the top N.
+
+**2. Distance metrics side by side.** pgvector has three operators, all "lower = closer":
+
+| Operator | Metric | Similarity |
+|----------|--------|-----------|
+| `<=>` | cosine distance | `1 - (a <=> b)` |
+| `<->` | Euclidean / L2 | straight-line distance |
+| `<#>` | negative inner product | `-(a · b)`, so more-negative = closer |
+
+The demo runs the same query vector through all three and prints the top hit for each. **The rule that matters:** match the operator to how your model was trained. `nomic-embed-text` returns L2-normalized vectors, so cosine and inner product rank identically — and each metric needs its *own* HNSW opclass (`vector_cosine_ops`, `vector_l2_ops`, `vector_ip_ops`). An index built for cosine won't accelerate an L2 query.
+
+**3. Filtered (hybrid) search.** Real RAG is almost never "search everything" — it's "search this tenant / this language / these docs." The example combines a structured `WHERE metadata @> '{"category":"database"}'` predicate with vector ranking in one query. The `metadata` JSONB column has a GIN index so the filter is cheap. The subtlety: within the `database` category the best-*matching* doc wins, which may not be the closest doc overall — that's exactly the point of scoping.
+
+**4. `ef_search` recall vs speed, live.** `hnsw.ef_search` bounds how many candidate nodes the graph walk keeps (default 40). The demo runs the same query at 10 / 40 / 100 and times each. Higher = better recall, more work. It's the query-time dial; `m` and `ef_construction` (in the index DDL) are the build-time dials.
+
+**5. The query plan.** Same `EXPLAIN` lesson as above — at 7 rows you'll see a `Seq Scan`, and that's *correct*, not a bug. The HNSW index only earns its keep once the table grows.
+
+**Mental model for the whole section:** an embedding turns text into a point in 768-dim space; vector search is just "find the nearest points." Everything else — the distance operator, the ANN index, `ef_search`, metadata filters — is about doing that *fast* and *scoped* without changing what "nearest" means.
