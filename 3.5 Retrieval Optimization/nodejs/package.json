@@ -1,5 +1,5 @@
 {
-  "name": "3.4.3-retrieval-optimization",
+  "name": "3.5-retrieval-optimization",
   "version": "1.0.0",
   "description": "Retrieval Optimization for RAG — top-K, metadata filtering, hybrid (dense + BM25) retrieval, and retrieval tuning knobs",
   "main": "src/index.ts",

@@ -1,0 +1,18 @@
+{
+  "name": "3.6-reranking",
+  "version": "1.0.0",
+  "description": "Reranking for RAG — cross-encoder, late interaction (ColBERT), LLM pointwise/pairwise/listwise, MMR, RRF, and business-rule reranking",
+  "main": "src/index.ts",
+  "scripts": {
+    "start": "ts-node src/index.ts"
+  },
+  "keywords": ["rag", "reranking", "cross-encoder", "colbert", "rankgpt", "mmr", "rrf", "two-stage-retrieval"],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "devDependencies": {
+    "@types/node": "^25.9.3",
+    "ts-node": "^10.9.2",
+    "typescript": "^6.0.3"
+  }
+}

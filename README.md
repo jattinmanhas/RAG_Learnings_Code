@@ -316,22 +316,15 @@ Rationale: A hypothetical answer is semantically closer to real answer-containin
 - Retrieve small chunks for precision
 - Expand to surrounding context for generation
 
-### Retrieval Optimization (3.4.3)
-- **Top-K Retrieval** — dense cosine search, tuning K for the recall/precision tradeoff
-- **Metadata Filtering** — narrow candidates by structured fields (source, language, access) before scoring; correctness and security, not just relevance
-- **Hybrid Retrieval** — fuse dense vectors (semantic recall) with BM25 keyword search (exact-token precision) via Reciprocal Rank Fusion or weighted score blending
-- **Retrieval Tuning** — the knobs: topK, dense/sparse mix (alpha), RRF constant, candidate width, score threshold
-- Runnable Go + Node.js examples in `3.4.3 Retrieval Optimization/`
-
 ---
 
 ## 3.5 Retrieval Optimization
 
-### Learn
-- Top-K Retrieval
-- Metadata Filtering
-- Hybrid Retrieval
-- Retrieval Tuning
+- **Top-K Retrieval** — dense cosine search, tuning K for the recall/precision tradeoff
+- **Metadata Filtering** — narrow candidates by structured fields (source, language, access) before scoring; correctness and security, not just relevance
+- **Hybrid Retrieval** — fuse dense vectors (semantic recall) with BM25 keyword search (exact-token precision) via Reciprocal Rank Fusion or weighted score blending
+- **Retrieval Tuning** — the knobs: topK, dense/sparse mix (alpha), RRF constant, candidate width, score threshold
+- Runnable Go + Node.js examples in `3.5 Retrieval Optimization/`
 
 ---
 
@@ -347,9 +340,18 @@ Rationale: A hypothetical answer is semantically closer to real answer-containin
 - Takes (query, chunk) as a pair and scores them together
 - Applied only to the top-K candidates, not the full corpus
 
+### Types of Re-Ranking
+- **Cross-encoder** — joint (query, doc) scoring; the production standard
+- **Late interaction (ColBERT-style)** — token-level MaxSim; middle ground between bi- and cross-encoders
+- **LLM-based** — pointwise / pairwise / listwise (RankGPT-style) judging with a generative model
+- **MMR** — diversity re-ranking to reduce redundancy in the final context
+- **RRF** — rank fusion across multiple retrievers
+- **Business-rule** — recency decay, source-authority boosts on top of relevance
+
 ### Understand
 - Why two-stage retrieval is the production standard
 - The latency/accuracy tradeoff between stages
+- Runnable Go + Node.js examples in `3.6 Reranking/`
 
 ---
 
