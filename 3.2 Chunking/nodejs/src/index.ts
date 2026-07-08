@@ -17,6 +17,7 @@
  *    Token ................... must respect a hard token limit / control cost.
  *    Markdown-header ......... docs/wikis with headings; want section metadata.
  *    Semantic ................ high-value corpora; topic-drifting text; costlier.
+ *    AST / code-aware ........ SOURCE CODE. The only correct choice for code RAG.
  * ============================================================================
  */
 
@@ -31,6 +32,7 @@ import {
   tokenChunk,
   markdownHeaderChunk,
   semanticChunk,
+  astChunk,
 } from "./chunkers";
 
 const SAMPLE = `# Retrieval-Augmented Generation
@@ -44,6 +46,50 @@ Embedding models have token limits. You cannot embed a whole book at once. Small
 ## Trade-offs
 
 Chunks that are too small lose context. Chunks that are too large waste the context window and dilute relevance. Overlap helps facts survive across boundaries.`;
+
+// A code sample for the AST demo. Notice: prose chunkers would cut this at
+// arbitrary character counts; the AST chunker cuts at declaration boundaries.
+const CODE_SAMPLE = `import { db } from "./db";
+
+const MAX_RETRIES = 3;
+
+/** A user record as stored in the database. */
+export interface User {
+  id: string;
+  email: string;
+}
+
+/** Data-access layer for users. */
+export class UserRepository {
+  /** Fetch a single user by primary key. */
+  async getUserById(id: string): Promise<User | null> {
+    const rows = await db.query("SELECT * FROM users WHERE id = $1", [id]);
+    return rows[0] ?? null;
+  }
+
+  /** Insert a new user and return the created row. */
+  async createUser(email: string): Promise<User> {
+    const rows = await db.query(
+      "INSERT INTO users (email) VALUES ($1) RETURNING *",
+      [email]
+    );
+    return rows[0];
+  }
+}
+
+/** Retry an async operation with exponential backoff. */
+export async function withRetry<T>(fn: () => Promise<T>): Promise<T> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      lastError = err;
+      await new Promise((r) => setTimeout(r, 2 ** attempt * 100));
+    }
+  }
+  throw lastError;
+}`;
 
 function preview(text: string, n = 60): string {
   const flat = text.replace(/\s+/g, " ");
@@ -80,6 +126,10 @@ async function main() {
   report("6. TOKEN (maxTokens=60, overlap=10)", tokenChunk(SAMPLE, 60, 10));
   report("7. MARKDOWN-HEADER (maxChars=400)", markdownHeaderChunk(SAMPLE, 400));
   report("8. SEMANTIC (threshold=0.75)", await semanticChunk(SAMPLE, fakeEmbed, { similarityThreshold: 0.75, maxChars: 400 }));
+  report(
+    "9. AST / CODE-AWARE (maxChars=400) — note: run on CODE_SAMPLE, not prose",
+    astChunk(CODE_SAMPLE, { maxChars: 400, filePath: "src/users.ts" })
+  );
 }
 
 main().catch((err) => {

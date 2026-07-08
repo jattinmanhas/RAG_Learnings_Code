@@ -278,10 +278,12 @@ User Query
 - Semantic Chunking
 - Metadata-Aware Chunking
 - Chunk Overlap
+- AST / Code-Aware Chunking (for codebase RAG — cut on function/class boundaries, not characters)
 
 ### Understand
 - How chunk size affects retrieval precision vs recall
 - Why chunk boundaries matter for answer completeness
+- Why prose chunkers fail on source code (half a function embeds as noise)
 
 ---
 

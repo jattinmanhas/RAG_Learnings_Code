@@ -509,3 +509,156 @@ export async function semanticChunk(
   flush();
   return chunks;
 }
+
+/* ===========================================================================
+ *  9. AST / CODE-AWARE CHUNKING  (the strategy for SOURCE CODE)
+ * ===========================================================================
+ *  Every strategy above treats input as PROSE. Feed them source code and they
+ *  will happily cut a function in half, or glue the tail of one class to the
+ *  head of another — and retrieval quality craters, because half a function
+ *  embeds as noise.
+ *
+ *  THE IDEA
+ *      Code has a grammar. Parse it into an AST (Abstract Syntax Tree) and cut
+ *      on SYNTACTIC boundaries — functions, classes, methods — so every chunk
+ *      is a semantically complete unit of code.
+ *
+ *  HOW IT WORKS
+ *      1. Parse the source into an AST.
+ *      2. Walk the TOP-LEVEL declarations:
+ *           - functions / classes / interfaces / enums -> ONE CHUNK EACH
+ *             (leading JSDoc comments ride along with their declaration).
+ *           - loose module-level statements (imports, consts) -> PACKED
+ *             together up to the size budget, like paragraph packing (#4).
+ *      3. A class too big for the budget is split BY METHOD, and each method
+ *         chunk gets the class header prepended so it keeps its context
+ *         ("this is a method of class Foo").
+ *      4. Anything still oversized falls back to recursive splitting (#5).
+ *      5. Every chunk carries METADATA: file path, symbol name, kind, and
+ *         start/end lines — this is what makes "cite file.ts:42" and
+ *         filtered retrieval ("only search class methods") possible later.
+ *
+ *  WHEN TO USE
+ *      - RAG over a CODEBASE. This is not optional there — it's the difference
+ *        between retrieving `getUserById` whole vs. retrieving its bottom half.
+ *
+ *  NOTE ON PARSERS
+ *      We use the TypeScript compiler API because it's already in this repo's
+ *      devDependencies — a REAL production-grade AST with zero new installs.
+ *      It only parses TS/JS. For a MULTI-LANGUAGE codebase, use tree-sitter
+ *      (`web-tree-sitter` in Node): one API, grammars for ~every language.
+ *      The chunking logic below stays the same; only the parser swaps.
+ * =========================================================================== */
+import * as ts from "typescript";
+
+export interface AstChunkOptions {
+  /** Size budget per chunk. Oversized classes split by method. */
+  maxChars?: number;
+  /** Stored in metadata — lets retrieval answer "which file is this from?". */
+  filePath?: string;
+}
+
+export function astChunk(source: string, options: AstChunkOptions = {}): Chunk[] {
+  const { maxChars = 1200, filePath = "unknown.ts" } = options;
+
+  // `setParentNodes: true` so node.getText()/getFullText() work everywhere.
+  const sourceFile = ts.createSourceFile(filePath, source, ts.ScriptTarget.Latest, true);
+
+  const chunks: Chunk[] = [];
+  let index = 0;
+
+  const lineOf = (pos: number) => sourceFile.getLineAndCharacterOfPosition(pos).line + 1;
+
+  const push = (text: string, start: number, end: number, metadata: Record<string, unknown>) => {
+    const chunk = makeChunk(text, index, start, end, { filePath, ...metadata });
+    if (chunk) {
+      chunks.push(chunk);
+      index++;
+    }
+  };
+
+  // "Major" declarations = named units of code that deserve their own chunk.
+  const isMajor = (node: ts.Node): boolean =>
+    ts.isFunctionDeclaration(node) ||
+    ts.isClassDeclaration(node) ||
+    ts.isInterfaceDeclaration(node) ||
+    ts.isEnumDeclaration(node) ||
+    ts.isTypeAliasDeclaration(node) ||
+    ts.isModuleDeclaration(node);
+
+  const nameOf = (node: ts.Node): string => {
+    const named = node as { name?: ts.Node };
+    return named.name ? named.name.getText(sourceFile) : "(anonymous)";
+  };
+
+  // Loose statements (imports, consts, expressions) get packed together.
+  let buffer = "";
+  let bufferStart = -1;
+
+  const flushBuffer = () => {
+    if (bufferStart < 0) return;
+    push(buffer, bufferStart, bufferStart + buffer.length, {
+      symbol: "(module level)",
+      kind: "module-statements",
+      startLine: lineOf(bufferStart),
+    });
+    buffer = "";
+    bufferStart = -1;
+  };
+
+  // Split an oversized class into one chunk PER METHOD, each carrying the
+  // class header ("class Foo extends Bar {") so the context isn't lost.
+  const splitClass = (cls: ts.ClassDeclaration) => {
+    const className = nameOf(cls);
+    const header = source.slice(cls.getStart(sourceFile), cls.members.pos).trimEnd();
+    for (const member of cls.members) {
+      const memberText = member.getFullText(sourceFile).trim();
+      const text = `${header}\n  // … other members omitted …\n  ${memberText}\n}`;
+      push(text, member.getStart(sourceFile), member.getEnd(), {
+        symbol: `${className}.${nameOf(member)}`,
+        kind: "method",
+        startLine: lineOf(member.getStart(sourceFile)),
+        endLine: lineOf(member.getEnd()),
+      });
+    }
+  };
+
+  for (const statement of sourceFile.statements) {
+    if (!isMajor(statement)) {
+      // Pack loose statements; start a new pack if this one would overflow.
+      const text = statement.getFullText(sourceFile).trim();
+      if (bufferStart >= 0 && buffer.length + text.length > maxChars) flushBuffer();
+      if (bufferStart < 0) bufferStart = statement.getStart(sourceFile);
+      buffer += (buffer ? "\n" : "") + text;
+      continue;
+    }
+
+    flushBuffer(); // a major declaration closes any open pack
+
+    // getFullText() (vs getText()) keeps the leading JSDoc with its owner.
+    const text = statement.getFullText(sourceFile).trim();
+    const metadata = {
+      symbol: nameOf(statement),
+      kind: ts.SyntaxKind[statement.kind],
+      startLine: lineOf(statement.getStart(sourceFile)),
+      endLine: lineOf(statement.getEnd()),
+    };
+
+    if (text.length <= maxChars) {
+      push(text, statement.getStart(sourceFile), statement.getEnd(), metadata);
+    } else if (ts.isClassDeclaration(statement)) {
+      splitClass(statement);
+    } else {
+      // A single giant function: no cleaner boundary exists inside it at this
+      // level, so fall back to recursive splitting but KEEP the symbol metadata.
+      for (const piece of recursiveChunk(text, maxChars, 50, ["\n\n", "\n", " ", ""])) {
+        push(piece.text, statement.getStart(sourceFile), statement.getEnd(), {
+          ...metadata,
+          oversized: true,
+        });
+      }
+    }
+  }
+  flushBuffer();
+  return chunks;
+}

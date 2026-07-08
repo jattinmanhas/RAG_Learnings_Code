@@ -1,7 +1,7 @@
 {
   "name": "3.2-chunking-nodejs",
   "version": "1.0.0",
-  "description": "Text chunking strategies for RAG — fixed, overlap, sentence, paragraph, recursive, token, structure-aware & semantic",
+  "description": "Text chunking strategies for RAG — fixed, overlap, sentence, paragraph, recursive, token, structure-aware, semantic & AST/code-aware",
   "main": "src/index.ts",
   "scripts": {
     "start": "ts-node src/index.ts"

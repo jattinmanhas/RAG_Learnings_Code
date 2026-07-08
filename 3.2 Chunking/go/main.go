@@ -16,6 +16,7 @@
 //    Token ................... must respect a hard token limit / control cost.
 //    Markdown-header ......... docs/wikis with headings; want section metadata.
 //    Semantic ................ high-value corpora; topic-drifting text; costlier.
+//    AST / code-aware ........ SOURCE CODE. The only correct choice for code RAG.
 // ============================================================================
 
 package main
@@ -37,6 +38,49 @@ Embedding models have token limits. You cannot embed a whole book at once. Small
 ## Trade-offs
 
 Chunks that are too small lose context. Chunks that are too large waste the context window and dilute relevance. Overlap helps facts survive across boundaries.`
+
+// A code sample for the AST demo. Notice: prose chunkers would cut this at
+// arbitrary character counts; the AST chunker cuts at declaration boundaries.
+const codeSample = `package users
+
+import (
+	"context"
+	"database/sql"
+)
+
+const maxRetries = 3
+
+// User is a user record as stored in the database.
+type User struct {
+	ID    string
+	Email string
+}
+
+// UserRepository is the data-access layer for users.
+type UserRepository struct {
+	db *sql.DB
+}
+
+// GetUserByID fetches a single user by primary key.
+func (r *UserRepository) GetUserByID(ctx context.Context, id string) (*User, error) {
+	row := r.db.QueryRowContext(ctx, "SELECT id, email FROM users WHERE id = $1", id)
+	var u User
+	if err := row.Scan(&u.ID, &u.Email); err != nil {
+		return nil, err
+	}
+	return &u, nil
+}
+
+// CreateUser inserts a new user and returns the created row.
+func (r *UserRepository) CreateUser(ctx context.Context, email string) (*User, error) {
+	row := r.db.QueryRowContext(ctx,
+		"INSERT INTO users (email) VALUES ($1) RETURNING id, email", email)
+	var u User
+	if err := row.Scan(&u.ID, &u.Email); err != nil {
+		return nil, err
+	}
+	return &u, nil
+}`
 
 func preview(text string, n int) string {
 	flat := whitespaceRe.ReplaceAllString(text, " ")
@@ -94,4 +138,10 @@ func main() {
 		panic(err)
 	}
 	report("8. SEMANTIC (threshold=0.75)", semantic)
+
+	astChunks, err := ASTChunk(codeSample, 400, "users/repository.go")
+	if err != nil {
+		panic(err)
+	}
+	report("9. AST / CODE-AWARE (maxChars=400) — note: run on codeSample, not prose", astChunks)
 }

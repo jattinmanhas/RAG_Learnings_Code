@@ -32,6 +32,10 @@
 package main
 
 import (
+	"fmt"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"math"
 	"regexp"
 	"strings"
@@ -561,5 +565,168 @@ func SemanticChunk(text string, embed EmbedFn, similarityThreshold float64, maxC
 		}
 	}
 	flush()
+	return chunks, nil
+}
+
+/* ===========================================================================
+ *  9. AST / CODE-AWARE CHUNKING  (the strategy for SOURCE CODE)
+ * ===========================================================================
+ *  Every strategy above treats input as PROSE. Feed them source code and they
+ *  will happily cut a function in half, or glue the tail of one function to
+ *  the head of another — and retrieval quality craters, because half a
+ *  function embeds as noise.
+ *
+ *  THE IDEA
+ *      Code has a grammar. Parse it into an AST (Abstract Syntax Tree) and cut
+ *      on SYNTACTIC boundaries — functions, methods, types — so every chunk is
+ *      a semantically complete unit of code.
+ *
+ *  HOW IT WORKS
+ *      1. Parse the source into an AST.
+ *      2. Walk the TOP-LEVEL declarations:
+ *           - funcs / methods / type declarations -> ONE CHUNK EACH
+ *             (the doc comment above a declaration rides along with it).
+ *           - imports and package-level consts/vars -> PACKED together up to
+ *             the size budget, like paragraph packing (#4).
+ *      3. Anything still oversized falls back to recursive splitting (#5),
+ *         keeping its symbol metadata.
+ *      4. Every chunk carries METADATA: file path, symbol name, kind, and
+ *         start/end lines — this is what makes "cite users.go:42" and
+ *         filtered retrieval ("only search methods") possible later.
+ *
+ *  WHEN TO USE
+ *      - RAG over a CODEBASE. This is not optional there — it's the difference
+ *        between retrieving GetUserByID whole vs. retrieving its bottom half.
+ *
+ *  NOTE ON PARSERS
+ *      go/parser + go/ast are in the STANDARD LIBRARY — a production-grade AST
+ *      with zero dependencies. They only parse Go. For a MULTI-LANGUAGE
+ *      codebase, use tree-sitter (github.com/smacker/go-tree-sitter): one API,
+ *      grammars for ~every language. The chunking logic below stays the same;
+ *      only the parser swaps.
+ * =========================================================================== */
+
+// receiverTypeName extracts "UserRepository" from a method receiver like
+// `(r *UserRepository)`, so methods get symbols like "UserRepository.GetUser".
+func receiverTypeName(expr ast.Expr) string {
+	switch t := expr.(type) {
+	case *ast.StarExpr:
+		return receiverTypeName(t.X)
+	case *ast.Ident:
+		return t.Name
+	case *ast.IndexExpr: // generic receiver, e.g. Repo[T]
+		return receiverTypeName(t.X)
+	default:
+		return "?"
+	}
+}
+
+func ASTChunk(source string, maxChars int, filePath string) ([]Chunk, error) {
+	fset := token.NewFileSet()
+	// parser.ParseComments keeps doc comments in the tree so they can ride
+	// along with their declarations.
+	file, err := parser.ParseFile(fset, filePath, source, parser.ParseComments)
+	if err != nil {
+		return nil, fmt.Errorf("ast chunking needs parseable code: %w", err)
+	}
+
+	var chunks []Chunk
+	index := 0
+
+	push := func(text string, start, end int, meta map[string]interface{}) {
+		meta["filePath"] = filePath
+		if c, ok := makeChunk(text, index, start, end, meta); ok {
+			chunks = append(chunks, c)
+			index++
+		}
+	}
+
+	// Loose declarations (imports, package consts/vars) get packed together.
+	var buffer strings.Builder
+	bufferStart, bufferLine := -1, 0
+
+	flushBuffer := func() {
+		if bufferStart < 0 {
+			return
+		}
+		push(buffer.String(), bufferStart, bufferStart+buffer.Len(), map[string]interface{}{
+			"symbol":    "(package level)",
+			"kind":      "package-declarations",
+			"startLine": bufferLine,
+		})
+		buffer.Reset()
+		bufferStart = -1
+	}
+
+	for _, decl := range file.Decls {
+		// The doc comment belongs to the declaration — include it in the slice.
+		startPos := decl.Pos()
+		symbol, kind := "", ""
+
+		switch d := decl.(type) {
+		case *ast.FuncDecl:
+			if d.Doc != nil {
+				startPos = d.Doc.Pos()
+			}
+			symbol, kind = d.Name.Name, "function"
+			if d.Recv != nil && len(d.Recv.List) > 0 {
+				symbol = receiverTypeName(d.Recv.List[0].Type) + "." + symbol
+				kind = "method"
+			}
+		case *ast.GenDecl:
+			if d.Doc != nil {
+				startPos = d.Doc.Pos()
+			}
+			if d.Tok == token.TYPE && len(d.Specs) > 0 {
+				kind = "type"
+				if ts, ok := d.Specs[0].(*ast.TypeSpec); ok {
+					symbol = ts.Name.Name
+				}
+			}
+		}
+
+		startOff := fset.Position(startPos).Offset
+		endOff := fset.Position(decl.End()).Offset
+		text := source[startOff:endOff]
+
+		// Imports / consts / vars: pack them instead of one tiny chunk each.
+		if kind == "" {
+			if bufferStart >= 0 && buffer.Len()+len(text) > maxChars {
+				flushBuffer()
+			}
+			if bufferStart < 0 {
+				bufferStart = startOff
+				bufferLine = fset.Position(startPos).Line
+			}
+			if buffer.Len() > 0 {
+				buffer.WriteString("\n\n")
+			}
+			buffer.WriteString(text)
+			continue
+		}
+
+		flushBuffer() // a named declaration closes any open pack
+
+		meta := map[string]interface{}{
+			"symbol":    symbol,
+			"kind":      kind,
+			"startLine": fset.Position(startPos).Line,
+			"endLine":   fset.Position(decl.End()).Line,
+		}
+
+		if len([]rune(text)) <= maxChars {
+			push(text, startOff, endOff, meta)
+			continue
+		}
+		// A single giant function: no cleaner boundary exists inside it at this
+		// level, so fall back to recursive splitting but KEEP the symbol metadata.
+		for _, piece := range RecursiveChunk(text, maxChars, 50, []string{"\n\n", "\n", " ", ""}) {
+			push(piece.Text, startOff, endOff, map[string]interface{}{
+				"symbol": symbol, "kind": kind, "oversized": true,
+				"startLine": meta["startLine"], "endLine": meta["endLine"],
+			})
+		}
+	}
+	flushBuffer()
 	return chunks, nil
 }
