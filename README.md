@@ -360,13 +360,17 @@ Rationale: A hypothetical answer is semantically closer to real answer-containin
 ## 3.7 Retrieval Confidence & "I Don't Know" Handling
 
 ### Learn
-- Retrieval score thresholding — if no chunk exceeds a similarity threshold, don't answer
-- Explicit abstention — model says "I don't have information about this" rather than hallucinating
-- Confidence signals — using retrieval scores as a proxy for answer confidence
+- **Absolute thresholding** (crude, corpus-specific) — similarity floor, top-1 floor, count-above-threshold, calibrated τ from a dev set, reranker-score floor
+- **Relative/distributional signals** (more robust) — top-1/top-2 gap, relative drop-off, softmax entropy, z-score vs corpus background, cross-retriever agreement
+- **LLM-based groundedness checks** (most robust, most expensive) — answerability gate, per-passage grading, claim-level NLI-style groundedness, citation verification, self-consistency
+- **The Complete Confidence Pipeline** — cheapest-first cascade with early exits → ANSWER / HEDGE / REFUSE
 
 ### Understand
-- Hallucination often happens when retrieval fails silently
+- Hallucination often happens when retrieval fails silently — top-K always returns *something*
+- Absolute cutoffs don't transfer across embedding models; distribution shape does
+- Reserve LLM checks for the gray zone; most queries should decide for free at stage 1–2
 - Explicit "no result" paths reduce hallucination rate significantly
+- Runnable Go + Node.js examples in `3.7 Retrieval Confidence/`
 
 ---
 
