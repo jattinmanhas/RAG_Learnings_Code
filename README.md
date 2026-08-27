@@ -377,9 +377,18 @@ Rationale: A hypothetical answer is semantically closer to real answer-containin
 ## 3.8 Context Construction
 
 ### Learn
-- Context Packing — fitting maximum relevant content within token limits
-- Context Ordering — highest relevance at top and bottom, not in the middle (lost-in-the-middle)
-- Context Compression — summarizing or trimming chunks before injection
+- **Context Packing** — fitting maximum relevant content within token limits: evidence budget (window − system − query − answer reserve), greedy vs density/knapsack packing, near-duplicate removal, per-source diversity cap, tiered packing
+- **Context Ordering** — highest relevance at top and bottom, not in the middle (lost-in-the-middle): relevance descending, bookend/"V", document-order restore, grouped bookend, query-adjacent layout
+- **Context Compression** — summarizing or trimming chunks before injection: extractive sentence selection, sentence-boundary truncation, cross-chunk sentence pruning, abstractive LLM summaries, the compression cascade
+- **Citation-ready formatting** — numbered `<source>` blocks with path/line provenance, excerpt vs summary labelling, marker resolution (the handoff to 3.9)
+- **The Complete Context Construction Pipeline** — dedupe → source cap → compress → pack → order → format → assemble
+
+### Understand
+- The context window is a budget, not a container — reserve the answer tokens *before* packing
+- Emission order is a retrieval decision: score-descending wastes the strong tail slot on your weakest chunk
+- Compress before packing, pack before ordering, format last (markup counts against the budget)
+- Never compress the chunk you expect to quote; label paraphrases or the model will invent quotes
+- Runnable Go + Node.js examples in `3.8 Context Construction/`
 
 ---
 

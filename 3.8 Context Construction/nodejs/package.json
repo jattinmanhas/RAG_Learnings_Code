@@ -1,0 +1,18 @@
+{
+  "name": "3.8-context-construction",
+  "version": "1.0.0",
+  "description": "Context construction for RAG — packing under a token budget, lost-in-the-middle ordering, compression, and citation-ready formatting",
+  "main": "src/index.ts",
+  "scripts": {
+    "start": "ts-node src/index.ts"
+  },
+  "keywords": ["rag", "context-construction", "token-budget", "lost-in-the-middle", "compression", "citations"],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "devDependencies": {
+    "@types/node": "^25.9.3",
+    "ts-node": "^10.9.2",
+    "typescript": "^6.0.3"
+  }
+}
