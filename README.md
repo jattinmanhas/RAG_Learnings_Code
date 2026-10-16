@@ -401,535 +401,350 @@ Rationale: A hypothetical answer is semantically closer to real answer-containin
 
 ---
 
-## 3.10 RAG Evaluation
+## 3.10 RAG Evaluation ⬅ YOU ARE HERE (expanded)
 
-### Learn
-- Retrieval Precision
-- Retrieval Recall
-- Answer Relevance
-- Faithfulness
-- Hallucination Rate
+> The most important section in the roadmap. Every technique in 3.3–3.8 is a hypothesis until this exists.
 
----
+### 3.10.1 Build the Golden Dataset
+- 50–100 hand-written questions over your real corpus
+- For each: expected source chunks/documents, a reference answer, and a type tag (factual, multi-hop, unanswerable, keyword-heavy)
+- Include unanswerable questions deliberately — they test 3.7
+- Version the dataset in git like code
 
-# Phase 4 — AI Behavior Engineering
+### 3.10.2 Retrieval Metrics (measure first, separately)
+- Recall@k — did the right chunk make it into the top-k?
+- Precision@k — how much of the top-k is noise?
+- MRR / nDCG — how high did the right chunk rank?
+- Measure retrieval *before* generation: a bad answer from bad retrieval is a retrieval bug
 
-**Objective:** Control model behavior intentionally and systematically.
+### 3.10.3 Generation Metrics
+- Faithfulness / groundedness — is every claim supported by the provided context?
+- Answer relevance — does it answer the actual question?
+- Citation accuracy — do cited sources actually contain the claim?
+- Refusal correctness — does it say "I don't know" on unanswerable questions, and only those?
 
-> This is the phase most GenAI roadmaps skip entirely.
+### 3.10.4 LLM-as-Judge
+- Write explicit grading rubrics, not "rate 1–10"
+- Prefer binary or small-scale judgments (supported / not supported)
+- Validate the judge: hand-label ~30 examples, measure agreement with the judge
+- Use a different (or stronger) model as judge than the one generating
 
----
+### 3.10.5 Ablations — Go Back and Measure Phase 3
+- Baseline: plain dense retrieval, no tricks
+- Add one technique at a time: hybrid, reranking, query rewriting, HyDE, parent-child, compression
+- Record recall, faithfulness, latency, and cost for each
+- Keep only what moves the numbers on *your* data
 
-## 4.1 Prompt Architecture
-
-### Learn
-- Prompt Templates
-- Behavioral Constraints
-- Output Constraints
-- Task Decomposition
-
-### Advanced Prompting Patterns
-- Self-Consistency — run CoT multiple times, take majority answer
-- Reflection Prompting — ask the model to review its own output
-- Meta-Prompting — use a model to generate or improve prompts
-
----
-
-## 4.2 Context Engineering
-
-### Context Construction
-Combine at inference time:
-- User input
-- Retrieved chunks
-- Memory
-- Tool outputs
-- System state
-
-### Context Compression
-- Summarization of older conversation turns
-- Memory pruning — remove low-signal history
-- Rolling context — maintain a compressed summary + recent verbatim turns
-
-### Token Budget Management
-- Actively decide what gets in and what gets dropped
-- Prioritize by recency, relevance, and instruction-criticality
-- System prompt and current query are never dropped
-
----
-
-## 4.3 Hallucination Management
-
-### Causes
-- Missing context (retrieval didn't find the right chunk)
-- Weak retrieval (wrong chunks retrieved)
-- Ambiguous prompts (model fills gaps with invented content)
-- Temperature too high
-
-### Mitigation
-- Improve retrieval before blaming the model
-- Explicit citations in every answer
-- Retrieval confidence thresholding
-- Constrained generation (only answer from provided context)
-
----
-
-## 4.4 Memory Systems
-
-### Short-Term Memory
-Chat history within a session.
-
-### Long-Term Memory
-Persistent memory across sessions — user preferences, facts, history.
-
-### Episodic Memory
-Previous agent actions, decisions, and their outcomes.
-
----
-
-## 4.5 Reasoning Systems
-
-### ReAct
-```
-Reason → Act → Observe → Reason → ...
-```
-
-### Reflection
-Self-review loops — model critiques its own output and revises.
-
-### Planning
-Task decomposition — break a complex goal into ordered sub-tasks before execution.
-
----
-
-# Phase 5 — Agents & Tool Use
-
-**Objective:** Build systems that can act, not just respond.
-
----
-
-## 5.1 Function Calling
-
-### Learn
-- Tool schema definition
-- Tool invocation
-- Tool selection logic
-- Tool output handling
-- Tool validation
-
-### Examples
-- Search APIs
-- Database queries
-- External APIs
-- Calculators
-- Code executors
-
----
-
-## 5.2 Tool Orchestration
-
-### Learn
-- Sequential tool execution
-- Tool chaining — output of one tool as input to next
-- Fallback logic — what happens when a tool fails
-
----
-
-## 5.3 Parallel Tool Calling
-
-### Learn
-- Concurrent tool execution — model calls multiple tools in a single turn
-- Latency optimization through parallelism
-- Handling partial failures in parallel calls
-
----
-
-## 5.4 Human-in-the-Loop
-
-### Learn
-- Approval workflows — agent pauses and requests human confirmation before high-risk actions
-- Action classification — distinguish read-only actions from destructive/irreversible ones
-- Escalation paths — when agent uncertainty exceeds threshold, route to human
-- Audit trails for human-approved decisions
+### 3.10.6 Eval as Infrastructure
+- One command runs the full suite and prints a comparison table
+- Run in CI on every prompt, chunking, or retrieval change
+- Store results per run so regressions are visible over time
+- Tools (optional, after building it yourself once): RAGAS, DeepEval
 
 ### Understand
-- Not all agent actions should be autonomous
-- Production agents on real data require trust boundaries
-- HITL is a safety mechanism, not a failure of automation
+- Evals are the differentiator — most "GenAI" resumes have demos, few have numbers
+- Top-K always returns something; only evals reveal silent retrieval failure
+- A technique that helps on a benchmark can hurt on your corpus
 
 ---
 
-## 5.5 Agent Workflows
+# Phase 4 — Agents, Tools & Harness Engineering
 
-### Build
-- Research Agents
-- Coding Agents
-- Knowledge Agents
-- Workflow Automation Agents
+**Objective:** Build systems that act, reliably — and know when *not* to use an agent.
+
+> Merges old Phase 5, memory (old 4.4), reasoning loops (old 4.5), and agent-facing security (old 6.1, 6.3, 6.4).
 
 ---
 
-## 5.6 MCP (Model Context Protocol)
+## 4.1 Tool Calling Fundamentals
+- How tool calls work: model requests, harness executes, result returns as a message
+- Tool schemas: names, descriptions, input schemas
+- Checking model support for tools (capabilities, chat templates, quantized builds)
+- Tool choice modes: auto, required, specific tool
+- Parallel tool calls and partial failures
 
-### Learn
-- MCP Architecture
-- Client/Server model
-- Tool discovery
-- Resource exposure
-- Authentication in MCP
+## 4.2 Tool Design
+- Descriptions say what a tool is for *and* what it's not for
+- Distinct names; avoid overlapping tools
+- Routing between competing tools (internal KB vs web search) via descriptions + system prompt
+- Compact outputs: return only needed fields, truncate, include total counts
+- Aggregation tools vs raw data (do the math in the database, not the model)
+- Bounded fallback tools for the long tail (whitelisted fields, row caps)
+- Validate every argument as untrusted input
 
-### Understand
-- Why MCP is becoming the standard interface between agents and external systems
-- How it compares to ad-hoc function calling
+## 4.3 The Harness & Agent Loop
+- Loop structure: call model → check for tool calls → execute → append result → repeat
+- Stop conditions: no tool call, final-answer tool, verification passed
+- Safety stops: max steps, repeated identical calls, error budget, token budget
+- Error handling: return errors as tool results so the model can recover
+- Verification inside the loop: run tests / validate schema, feed failures back
+- Build one by hand (~50–100 lines) before touching any framework
 
----
+## 4.4 Workflows vs Agents
+- Agentic workflows: stages fixed in code, model decides inside chosen stages
+- Autonomous agents: model chooses steps and tools
+- Common patterns: routing, prompt chaining, parallelization, orchestrator-workers, evaluator-optimizer
+- Default to the simplest workflow that passes evals; add autonomy only where needed
 
-# Phase 6 — AI Security & Safety
+## 4.5 Loop Engineering
+- Turn-based loops (user drives each turn)
+- Goal-based loops (explicit, verifiable stop condition + turn cap)
+- Time-based loops (interval or schedule)
+- Proactive loops (event-triggered, no human in real time)
+- Choosing trigger, stop condition, verification, and cost limits per task
 
-**Objective:** Build AI systems that are secure, compliant, and trustworthy.
+## 4.6 Context Engineering for Agents
+- Context grows every step; tool results are re-sent on every call
+- Trimming and summarizing old tool results
+- Rolling summary + recent verbatim turns
+- Token budget: system prompt and current task are never dropped
 
-> Given your background in Password Managers and IAM, this phase is a significant differentiator.
+## 4.7 Memory Systems
+- Short-term (session history) vs long-term (persistent) vs episodic (past actions and outcomes)
+- Store → retrieve → inject → update
+- Always-on core memory vs threshold-based retrieval vs memory-as-a-tool
+- Staleness, corrections, deletion, privacy
 
----
+## 4.8 Agentic RAG
+- Retrieval as a tool instead of a fixed pipeline step
+- Query retry / rewrite when retrieval is weak
+- Multi-source retrieval (internal KB + web + database)
+- Compare against the fixed pipeline from Phase 3 using 3.10 evals
 
-## 6.1 Prompt Injection
+## 4.9 Skills & Hooks
+- Skills: `SKILL.md` procedures loaded on demand; description as the trigger
+- Explicit (slash command) vs implicit (description match) invocation
+- When to write a skill (repeated corrections, multi-step procedures, team conventions)
+- Hooks: deterministic code on events (pre-tool, post-tool, session start/end)
+- Skills guide the model; hooks guarantee behavior regardless of the model
 
-### Direct Injection
-User inputs instructions designed to override system prompt behavior.
+## 4.10 Permissions & Human-in-the-Loop
+- Harness permissions vs backend authorization — two layers, both enforced
+- Classify tools by effect: read / write / destructive-or-external
+- Default-deny for unclassified tools; re-evaluate when the tool list changes
+- Argument-level rules (folder scope, amount limits)
+- Approval workflows: show arguments, wait for explicit yes
+- Escalation paths and audit trails for approved actions
 
-### Indirect Injection
-Malicious instructions embedded in retrieved documents — the model executes them during generation.
+## 4.11 MCP (Model Context Protocol)
+- Architecture: client (in harness), server (wraps a service), transport (stdio / HTTP)
+- Tool discovery, resources, prompts
+- **Build:** an MCP server in front of your own REST API
+  - Expose read routes first, writes later with approval
+  - Per-user OAuth — never a shared admin key
+  - Compact outputs, clear descriptions, server-side validation
+- Connect the same server to Claude, your own harness, and any MCP client
+- Trust: tool descriptions come from the server — only connect servers you trust; treat annotations as hints
 
-### Learn
-- Detection patterns
-- Mitigation strategies — instruction hierarchy, input sanitization
-- Why RAG systems are particularly vulnerable to indirect injection
+## 4.12 Subagents & Orchestration
+- Subagents: separate loops with their own context, returning summaries
+- Spawning is just a tool the orchestrator calls
+- When to delegate: large searches, independent subtasks, context pressure
+- Model routing: strong orchestrator, cheaper workers
+- Swarms: planner → many workers → judge/reducer; cost and coordination risks
+- A2A: agent-to-agent protocol for remote, independently owned agents
 
----
+## 4.13 Agent Evaluation
+- Final-answer evals (reuse 3.10 methods)
+- Trajectory evals: right tools? right arguments? wasted steps? loops?
+- Tool routing tests: question sets that should hit each tool
+- Cost and latency per task as first-class metrics
+- Regression suite in CI, same as 3.10
 
-## 6.2 Input Sanitization
-
-### Learn
-- Stripping control characters and injection patterns from user input
-- Validating input structure before sending to model
-- Escaping user content when embedding in system prompts
-
----
-
-## 6.3 RAG Security
-
-### Learn
-- Data leakage prevention — model should not reveal chunks from documents the user is unauthorized to see
-- Multi-tenant isolation — tenant A's documents must never surface in tenant B's retrieval
-- Authorization-aware retrieval — filter retrieval candidates by user permissions before ranking
-- Document-level permission enforcement
-
----
-
-## 6.4 Tool Security
-
-### Learn
-- Permission validation before tool execution
-- Action confirmation for destructive operations
-- Least privilege design — tools get minimum necessary permissions
-- Sandboxing tool execution environments
-
----
-
-## 6.5 Output Security
-
-### Learn
-- Guardrails — blocking or flagging unsafe outputs
-- Output validation against schema before returning to client
-- Content moderation integration
-
----
-
-## 6.6 Audit Logging
-
-### Learn
-- Logging every prompt, retrieval event, tool call, and response with user identity
-- Immutable audit trails for compliance
-- Log structure — who, what, when, which documents were retrieved, what was generated
-- Retention policies
-
-### Understand
-- Enterprise AI procurement requires auditability
-- Audit logs are the evidence layer for investigating security incidents
-- Directly connected to IAM — logs must carry authenticated identity, not just session IDs
-
----
-
-## 6.7 Secrets Management
-
-### Learn
-- API key management
-- Secret rotation
-- Environment isolation
-- Vault concepts (HashiCorp Vault, AWS Secrets Manager)
-
----
-
-## 6.8 AI Safety
-
-### Learn
-- Jailbreak patterns and defenses
-- Unsafe output categories
-- Moderation APIs and custom classifiers
+## 4.14 Agent Security
+- **Prompt injection:** direct and indirect (via retrieved docs and tool results)
+  - Tool output is data, never instructions
+  - Instruction hierarchy, input isolation, sensitive actions behind approval
+- **Authorization-aware retrieval:** filter by user permissions *before* ranking; multi-tenant isolation
+- **Tool security:** least privilege, scoped credentials, sandboxed execution, confirmation for destructive actions
+- **Data exfiltration:** never let tool results steer where user data is sent
 
 ---
 
-# Phase 7 — Production AI Engineering
+# Phase 5 — AI Security & Safety
 
-**Objective:** Build AI systems that survive real users at scale.
+**Objective:** Make the system auditable, compliant, and safe beyond the agent layer.
 
----
+## 5.1 Input Sanitization
+- Strip control characters, validate structure, escape user content in prompts
 
-## 7.1 Async Pipelines
+## 5.2 Output Security
+- Guardrails, schema validation before returning to clients, content moderation
 
-### Build
-- Document ingestion pipelines
-- Embedding generation jobs
-- OCR pipelines for scanned documents
+## 5.3 Audit Logging
+- Log every prompt, retrieval, tool call, approval, and response with authenticated identity
+- Immutable trails, retention policies
+- Who, what, when, which documents, what was generated
 
-### Use
-- Redis
-- BullMQ
+## 5.4 Secrets Management
+- API key management, rotation, environment isolation, Vault / cloud secret managers
+- MCP servers hold credentials; models never see them
 
----
-
-## 7.2 Caching
-
-### Learn
-- Embedding cache — don't re-embed identical content
-- Retrieval cache — cache results for repeated queries
-- Response cache — cache full responses for identical prompt + context pairs
-- Semantic caching — cache responses for semantically similar queries
+## 5.5 AI Safety
+- Jailbreak patterns and defenses, unsafe output categories, moderation APIs, custom classifiers
 
 ---
 
-## 7.3 Observability
+# Phase 6 — Production AI Engineering
 
-### Learn
-- Distributed tracing across the full RAG pipeline
-- Prompt logging — store every prompt and completion
-- Token monitoring — track usage per user, per tenant, per endpoint
-- Latency analysis — identify bottlenecks in retrieval vs generation
-- Tools: LangSmith, Helicone, custom solutions
+**Objective:** Survive real users at scale.
 
----
+## 6.1 Async Pipelines
+- Ingestion, embedding, and OCR jobs on queues (Redis, BullMQ / your Go job queue)
 
-## 7.4 Cost Optimization
+## 6.2 Caching
+- Provider prompt caching (stable prefixes: system prompt, tools, skills)
+- Embedding cache, retrieval cache, response cache, semantic cache
 
-### Learn
-- Context reduction — trim unnecessary tokens before sending
-- Caching strategies — avoid redundant API calls
-- Model routing — use smaller/cheaper models for simple tasks, larger models for complex ones
-- Prompt compression — reduce prompt length without losing instruction quality
+## 6.3 Observability
+- Tracing across retrieval, generation, and every agent step
+- Prompt and completion logs, token usage per user/tenant/endpoint
+- Latency breakdown: retrieval vs generation vs tools
+- Tools: LangSmith, Helicone, Langfuse, or custom OpenTelemetry
 
----
+## 6.4 Cost Optimization
+- Context reduction, compact tool outputs, step limits
+- Model routing: small models for simple tasks, large for judgment
+- Scripts for deterministic work instead of model reasoning
 
-## 7.5 Prompt Lifecycle Management
+## 6.5 Prompt Lifecycle Management
+- Prompts, tool descriptions, and skills in version control
+- Staged rollout, rollbacks, eval gate before promotion
+- A prompt change is a deployment
 
-### Learn
-- Prompt versioning — track prompts in version control like code
-- Staged rollout — test prompt changes in staging before production
-- Rollbacks — revert to previous prompt version on regression
-- Prompt evaluation against regression test sets before promoting
+## 6.6 A/B Testing
+- Traffic splitting between prompt/model variants
+- Decide with eval metrics and statistics, not vibes
 
-> Treat prompts like code. A prompt change is a deployment.
+## 6.7 Structured Failure Handling
+- Malformed JSON, tool failures mid-loop, partial results
+- Context length exceeded, zero retrieval results
+- Timeouts, retry storms, idempotency for write tools
 
----
+## 6.8 Production Evaluation & Monitoring
+- Sample live traffic into offline evals
+- Online signals: thumbs, refusals, escalations, step counts
+- Drift detection when models, data, or prompts change
 
-## 7.6 A/B Testing Prompts
-
-### Learn
-- Running multiple prompt versions simultaneously in production
-- Traffic splitting between variants
-- Measuring performance with evaluation metrics, not just vibes
-- Deciding when a variant is statistically better before full rollout
-
-### Understand
-- Prompt changes can silently degrade quality without A/B infrastructure
-- This is how responsible prompt changes are shipped in production
-
----
-
-## 7.7 Structured Failure Handling
-
-### Handle
-- Malformed JSON output despite JSON mode
-- Tool call failures mid-chain
-- Partial tool responses
-- Context length exceeded at runtime
-- Retrieval returning zero results
-- Model timeout and retry storms
-
-### Understand
-- LLM failure modes are different from normal API failures
-- Retry logic for LLMs must account for idempotency and cost
-
----
-
-## 7.8 AI Evaluation
-
-### Learn
-- Faithfulness — is the answer consistent with the retrieved context?
-- Groundedness — is every claim traceable to a source?
-- Answer Relevance — does the answer actually address the query?
-- Hallucination Rate — what percentage of claims are fabricated?
-- Tools: RAGAS, DeepEval
-
----
-
-## 7.9 Scalability
-
-### Learn
+## 6.9 Scalability
 - Horizontal scaling of embedding and retrieval services
-- Queue-based architectures for ingestion workloads
-- Load management under concurrent generation requests
+- Queue-based ingestion, concurrency limits on generation
+
+---
+
+# Phase 7 — Prompt & Behavior Engineering
+
+**Objective:** Fine-grained control, applied as needed — most of it is used inside earlier phases.
+
+## 7.1 Prompt Architecture
+- Templates, behavioral and output constraints, task decomposition
+
+## 7.2 Advanced Patterns
+- Self-consistency, reflection, meta-prompting
+- Evaluate each against your evals — many add cost without gains
+
+## 7.3 Hallucination Management
+- Causes: missing context, weak retrieval, ambiguous prompts, high temperature
+- Mitigation: fix retrieval first, citations, confidence thresholds, constrained generation
 
 ---
 
 # Phase 8 — Frameworks
 
-**Objective:** Learn abstractions only after understanding what they abstract.
+> Learn abstractions only after you've built what they abstract.
 
-> Do not start here. These frameworks are easier to evaluate, debug, and extend once you've built the underlying patterns manually.
-
----
-
-## 8.1 LangChain.js
-
-- Chains
-- Agents
-- Tools
-- Retrieval
-
----
-
-## 8.2 Vercel AI SDK
-
-- Streaming-first design for Node.js / Next.js
-- Built-in tool use
-- Provider-agnostic (OpenAI, Anthropic, etc.)
-- Production-friendly for JS backends
-
----
-
-## 8.3 LlamaIndex
-
-- Indexes
-- Retrieval pipelines
-- RAG abstractions
-
----
-
-## 8.4 DSPy (Optional)
-
-- Programmatic prompt optimization
-- Automatic few-shot generation
-- Signature-based prompting
+- **Vercel AI SDK** — streaming-first, tool use, provider-agnostic; fits Node/Next.js
+- **MCP SDKs** (TypeScript, Python, Go) — for servers and clients
+- **LangGraph** — explicit-state agent graphs, branching, human approval steps
+- **LangChain.js / LlamaIndex** — optional; useful for retrieval plumbing
+- **DSPy** — optional; programmatic prompt optimization
 
 ---
 
 # Phase 9 — Advanced Model Customization
 
-**Objective:** Understand how models are adapted for specific domains.
+> Only after earlier phases, and only when evals show prompting + retrieval aren't enough.
 
-> Only after completing all earlier phases.
+## 9.1 Open-Weight Models
+- Llama, Qwen, Mistral, Gemma — licenses, capabilities, tool support
 
----
+## 9.2 Inference
+- Ollama, llama.cpp, vLLM
+- Quantization: BF16, INT8, 4-bit; GGUF k-quants (Q4_K_M, Q5_K_M)
 
-## 9.1 Fine-Tuning
-
-- LoRA
-- QLoRA
-- PEFT
-
----
-
-## 9.2 Open-Source Models
-
-- Llama
-- Qwen
-- Mistral
-
----
-
-## 9.3 Inference
-
-- vLLM
-- Ollama
-- Quantization
+## 9.3 Fine-Tuning
+- LoRA, QLoRA, PEFT
+- Data curation is most of the work
+- Always compare against a well-prompted baseline using your evals
 
 ---
 
 # Capstone Project
 
-## Multi-Tenant Enterprise RAG Platform
+## Multi-Tenant Enterprise RAG + Agent Platform
 
-A single project, built progressively across all phases.
+### Stage 1 — Foundation
+- Auth + multi-tenant user model, document upload and storage, basic chat
+
+### Stage 2 — Retrieval
+- Pre-processing pipeline, chunking, embeddings, pgvector, hybrid retrieval, reranking
+
+### Stage 3 — Response Quality
+- Citations, streaming, "I don't know" handling
+
+### Stage 4 — Evaluation (new position — before anything else is added)
+- Golden dataset, retrieval + generation metrics, validated LLM judge
+- Ablation table for every Phase 3 technique
+- Eval suite runs in CI
+
+### Stage 5 — Agent Layer
+- Hand-built harness with step limits and verification
+- Agentic retrieval as a tool, compared against the fixed pipeline
+- Memory (core + retrieved)
+- Human approval for write actions
+- Trajectory evals
+
+### Stage 6 — MCP Server
+- Expose the platform as an MCP server with per-user OAuth
+- Read tools first, then approved write tools
+- Demo it working from Claude and from your own harness
+
+### Stage 7 — Security
+- Authorization-aware retrieval, tenant isolation, injection mitigations, audit logging
+
+### Stage 8 — Production
+- Async ingestion, caching (including prompt caching), observability, prompt versioning, deployment
 
 ---
 
-### Stage 1 — Foundation
-- Authentication + multi-tenant user model
-- PDF upload + document storage
-- Basic chat with an LLM
+# Interview-Ready Cut
 
-### Stage 2 — Retrieval
-- Document pre-processing pipeline
-- Chunking + embedding generation
-- pgvector integration
-- Semantic retrieval
+If time is short, this subset makes a strong portfolio story:
 
-### Stage 3 — Response Quality
-- Citations in every response
-- Streaming responses
-- "I don't know" handling when retrieval fails
+1. RAG pipeline (done) **with a real eval suite and ablation numbers** (3.10)
+2. Hand-built agent loop with 2–3 well-designed tools and step limits (4.1–4.3)
+3. Agentic RAG compared against the fixed pipeline, with numbers (4.8)
+4. An MCP server over your own API with OAuth and approval for writes (4.10–4.11)
+5. Trajectory evals for the agent (4.13)
 
-### Stage 4 — Memory
-- Short-term chat memory
-- Long-term user memory
-- Context compression for long conversations
-
-### Stage 5 — Tool Use
-- Function calling
-- At least one real tool (web search, database query, calculator)
-- Human-in-the-loop approval for destructive actions
-
-### Stage 6 — Security
-- Authorization-aware retrieval (users can only retrieve their own documents)
-- Multi-tenant isolation
-- Audit logging for all model interactions
-- Prompt injection mitigation
-
-### Stage 7 — Production
-- Async ingestion pipeline (BullMQ + Redis)
-- Caching layer
-- Observability (tracing, prompt logs, token tracking)
-- Prompt versioning
-- AI evaluation suite (faithfulness, hallucination rate)
-- Production deployment
+Everything else can follow while interviewing.
 
 ---
 
 # Highest ROI Topics
 
-If you had to prioritize, these topics will take you further than 90% of people currently putting "GenAI" on their resumes:
-
-1. RAG Engineering
-2. Embeddings (dense + sparse)
-3. pgvector
-4. Query Transformation
-5. Re-Ranking
-6. Function Calling
-7. AI Security
-8. AI Evaluation
-9. Production Engineering
-10. MCP
+1. Evaluation (RAG + agent)
+2. RAG Engineering
+3. Tool Design & Harness / Loop Engineering
+4. Hybrid Retrieval & Re-Ranking
+5. MCP (building servers, with auth)
+6. AI Security (injection, authorization-aware retrieval, tool permissions)
+7. Context Engineering
+8. Production Engineering (observability, caching, cost)
+9. Workflows vs Agents judgment
+10. Embeddings (dense + sparse)
 
 ---
 
 *Built for: Backend Engineer → GenAI Engineer transition*
-*Stack: Node.js, Go, PostgreSQL, Redis, pgvector*
+*Stack: Go, Node.js/TypeScript, PostgreSQL, Redis, pgvector, MCP*
